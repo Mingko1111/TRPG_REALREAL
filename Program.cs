@@ -42,6 +42,7 @@
     }
 
 
+
     public class GameManager
     {
 
@@ -72,6 +73,8 @@
         }
     }
 
+
+
     public abstract class Scene
     {
 
@@ -96,6 +99,8 @@
             Update();
         }
     }
+
+
 
     public class Map
     {
@@ -192,12 +197,19 @@
         }
     }
 
+
+
     public class Player
     {
         public int X { get; set; }
         public int Y { get; set; }
 
+        public int Gold { get; private set; } = 500;
+
         public int HP { get; set; } = 100;
+
+        public int MaxHP { get; set; } = 100;
+        public int CurrentHP { get; set; } = 50;
         public int Attack { get; set; } = 10;
 
         public void GainExp(int amount)
@@ -241,7 +253,30 @@
                 Y = newY;
             }
         }
+
+        public void AddGold(int amount)
+        {
+            Gold += amount;
+            Console.WriteLine($"{amount} G를 획득했습니다. 현재 보유 골드: {Gold} G");
+        }
+
+        public bool SpendGold(int amount)
+        {
+            if (Gold >= amount)
+            {
+                Gold -= amount;
+                Console.WriteLine($"{amount} G를 사용했습니다. 남은 골드: {Gold} G");
+                return true;
+            }
+            else
+            {
+                Console.WriteLine("골드가 부족합니다.");
+                return false;
+            }
+        }
     }
+
+
 
     public class Inventory
     {
@@ -260,7 +295,35 @@
                 Console.WriteLine("- " + item);
             }
         }
+
+        // 아이템 추가
+        public void AddItem(string itemName)
+        {
+            Items.Add(itemName);
+            Console.WriteLine($"{itemName}이(가) 인벤토리에 추가되었습니다.");
+        }
+
+        // 아이템 제거
+        public void RemoveItem(string itemName)
+        {
+            if (Items.Contains(itemName))
+            {
+                Items.Remove(itemName);
+                Console.WriteLine($"{itemName}이(가) 인벤토리에서 제거되었습니다.");
+            }
+            else
+            {
+                Console.WriteLine($"{itemName}은(는) 인벤토리에 없습니다.");
+            }
+        }
+
+        // 현재 아이템 리스트 반환
+        public List<string> GetItems()
+        {
+            return new List<string>(Items); // 복사본 반환 (원본 보호)
+        }
     }
+
 
 
     class Monster
@@ -268,25 +331,39 @@
         public string Name { get; set; }
         public int HP { get; set; }
         public int Attack { get; set; }
+        public int RewardGold { get; set; }
 
-        public Monster(string name, int hp, int atk)
+        public Monster(string name, int hp, int atk, int rewardGold = 50)
         {
             Name = name;
             HP = hp;
             Attack = atk;
+            RewardGold = rewardGold;
         }
+
+
+
+
     }
 
-    // BattleScene.cs
+
+
     class BattleScene : Scene
     {
+
+        private int returnX;
+        private int returnY;
+        private string fromTown;
         private Player player;
         private Monster monster;
 
-        public BattleScene(Player player, Monster monster)
+        public BattleScene(Player player, Monster monster, string fromTown, int returnX, int returnY)
         {
             this.player = player;
             this.monster = monster;
+            this.fromTown = fromTown;
+            this.returnX = returnX;
+            this.returnY = returnY;
         }
 
         public override void Load()
@@ -310,8 +387,9 @@
                 {
                     Console.WriteLine("몬스터 처치!");
                     player.GainExp(10);
+                    player.AddGold(monster.RewardGold);
                     Console.ReadKey();
-                    gameManager.ChangeScene(new FieldScene());
+                    gameManager.ChangeScene(new FieldScene(fromTown, returnX, returnY));
                     return;
                 }
 
@@ -336,9 +414,115 @@
         }
     }
 
-    public class TownScene1 : Scene
+
+
+    public abstract class BaseTownScene : Scene
     {
-        private Map map;
+        protected Map map;
+        protected Dictionary<string, int> weaponShopItems = new Dictionary<string, int>
+    {
+        { "나무검", 100 },
+        { "나무갑옷", 120 },
+        { "철검", 250 },
+        { "철갑옷", 300 }
+    };
+
+        protected Dictionary<string, int> potionShopItems = new Dictionary<string, int>
+    {
+        { "회복약", 50 },
+        { "고급 회복약", 120 },
+        { "정령의 가호", 300 }
+    };
+
+        protected void HandleShopInteraction(Dictionary<string, int> items, string shopName)
+        {
+            while (true)
+            {
+                Console.Clear();
+                Console.WriteLine($"== {shopName} ==");
+                Console.WriteLine("1. 구매하기\n2. 판매하기\n3. 나가기");
+                var input = Console.ReadKey(true).Key;
+
+                if (input == ConsoleKey.D1)
+                {
+                    Console.Clear();
+                    Console.WriteLine("[구매 가능한 아이템 목록]");
+                    int i = 1;
+                    foreach (var item in items)
+                    {
+                        Console.WriteLine($"{i}. {item.Key} - {item.Value} G");
+                        i++;
+                    }
+                    Console.Write("구매할 아이템 번호 입력: ");
+                    if (int.TryParse(Console.ReadLine(), out int choice) && choice > 0 && choice <= items.Count)
+                    {
+                        string itemName = items.ElementAt(choice - 1).Key;
+                        int price = items[itemName];
+
+                        if (player.SpendGold(price))
+                        {
+                            player.Inventory.AddItem(itemName);
+                            Console.WriteLine($"{itemName}을(를) 구매했습니다!");
+                        }
+                        else
+                        {
+                            Console.WriteLine("골드가 부족합니다.");
+                        }
+                    }
+                    else Console.WriteLine("잘못된 입력입니다.");
+                    Console.ReadKey();
+                }
+                else if (input == ConsoleKey.D2)
+                {
+                    Console.Clear();
+                    Console.WriteLine("[판매 가능한 아이템 목록]");
+                    var inventoryItems = player.Inventory.GetItems();
+                    for (int i = 0; i < inventoryItems.Count; i++)
+                    {
+                        Console.WriteLine($"{i + 1}. {inventoryItems[i]}");
+                    }
+                    Console.Write("판매할 아이템 번호 입력: ");
+                    if (int.TryParse(Console.ReadLine(), out int sellChoice) && sellChoice > 0 && sellChoice <= inventoryItems.Count)
+                    {
+                        string itemName = inventoryItems[sellChoice - 1];
+
+                        if (items.TryGetValue(itemName, out int originalPrice))
+                        {
+                            int sellPrice = (int)(originalPrice * 0.6);
+                            player.AddGold(sellPrice);
+                            player.Inventory.RemoveItem(itemName);
+                            Console.WriteLine($"{itemName}을(를) {sellPrice} G에 판매했습니다!");
+                        }
+                        else
+                        {
+                            Console.WriteLine("이 상점에서는 이 아이템을 구매하지 않습니다.");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("잘못된 입력입니다.");
+                    }
+                    Console.ReadKey();
+                }
+                else if (input == ConsoleKey.D3)
+                    break;
+            }
+        }
+
+        protected void HandleHospital()
+        {
+            Console.Clear();
+            Console.WriteLine("NPC: 당신, 부상을 입었군요. 치료해드릴까요?");
+            player.CurrentHP = player.MaxHP;
+            Console.WriteLine("당신의 체력이 모두 회복되었습니다!");
+            Console.ReadKey();
+        }
+    }
+
+
+
+    public class TownScene1 : BaseTownScene
+    {
         private string fromWhere;
 
         public TownScene1(string fromWhere = "")
@@ -348,7 +532,6 @@
 
         public override void Load()
         {
-            Console.Clear();
             map = new Map(false, "Town1");
 
             if (fromWhere == "Field")
@@ -363,12 +546,8 @@
             }
         }
 
-
         public override void Update()
         {
-
-            
-
             while (true)
             {
                 map.Draw(player);
@@ -393,22 +572,15 @@
                     }
                     else if (tile == 'N')
                     {
-                        Console.Clear();
-                        Console.WriteLine("NPC: 안녕하세요, 용사님! 좋은 무기와 방어구가 준비되어 있어요.");
-                        Console.WriteLine("- 무기: 검, 활\n- 방어구: 갑옷, 방패");
-                        Console.ReadKey();
+                        HandleShopInteraction(weaponShopItems, "무기/방어구 상점");
                     }
                     else if (tile == 'S')
                     {
-                        Console.Clear();
-                        Console.WriteLine("상점: 물건을 사시겠습니까?");
-                        Console.ReadKey();
+                        HandleShopInteraction(potionShopItems, "포션 상점");
                     }
                     else if (tile == 'H')
                     {
-                        Console.Clear();
-                        Console.WriteLine("NPC: 당신, 부상을 입었군요? 치료해드릴까요?");
-                        Console.ReadKey();
+                        HandleHospital();
                     }
                 }
                 else
@@ -417,20 +589,31 @@
                 }
             }
         }
-       
-
-      
-        
     }
+
+
 
     public class FieldScene : Scene
     {
         private Map map;
         private string fromTown;
+        private int? startX;
+        private int? startY;
+        private List<Monster> monsterPool = new List<Monster>
 
-        public FieldScene(string fromTown = "Town1")
+        {
+            new Monster("고블린", 30, 5, 50),
+            new Monster("슬라임", 20, 3, 30),
+            new Monster("오크", 60, 10, 80),
+            new Monster("늑대", 40, 8, 60),
+            new Monster("박쥐", 25, 4, 40)
+        };
+
+        public FieldScene(string fromTown = "Town1", int? startX = null, int? startY = null)
         {
             this.fromTown = fromTown;
+            this.startX = startX;
+            this.startY = startY;
             map = new Map(true, fromTown);
         }
 
@@ -439,7 +622,12 @@
             Console.Clear();
 
             // 여기에서 player 위치 설정
-            if (fromTown == "Town1")
+            if (startX.HasValue && startY.HasValue)
+            {
+                player.X = startX.Value;
+                player.Y = startY.Value;
+            }
+            else if (fromTown == "Town1")
             {
                 player.X = 1;
                 player.Y = 1;
@@ -477,16 +665,23 @@
                     char tile = map.GetTile(player.X, player.Y);
                     if (tile == 'M')
                     {
-                        gameManager.ChangeScene(new BattleScene(player, new Monster("고블린", 30, 5)));
+                        Random rand = new Random();
+                        int index = rand.Next(monsterPool.Count);
+                        Monster selected = monsterPool[index];
+
+                        Console.WriteLine($"{selected.Name}이(가) 나타났다!");
+                        Console.ReadKey();
+
+                        gameManager.ChangeScene(new BattleScene(player, selected, fromTown, player.X, player.Y));
                         break;
                     }
                     else if (tile == 'O')
                     {
-                        // O를 밟고 이동할 때, 현재 위치로부터 어느 마을로 가는지 결정
+                        
                         if (player.X == 1 && player.Y == 1)
                             gameManager.ChangeScene(new TownScene1("Field"));
                         else if (player.X == Map.Width - 2 && player.Y == Map.Height - 2)
-                            gameManager.ChangeScene(new TownScene2()); // 오른쪽 아래 → Town2
+                            gameManager.ChangeScene(new TownScene2());
                         return;
                     }
                 }
@@ -500,17 +695,13 @@
        
     }
 
-    public class TownScene2 : Scene
+
+
+    public class TownScene2 : BaseTownScene
     {
-
-        
-        private Map map = new Map(false, "Town2");
-
         public override void Load()
         {
-
-
-            map = new Map(false, "Town2"); 
+            map = new Map(false, "Town2");
             map.SetTile(1, 1, 'O');
             player.X = 1;
             player.Y = 1;
@@ -534,7 +725,6 @@
                 }
                 else if (key == ConsoleKey.Spacebar)
                 {
-                    player.Move(key, map);
                     char tile = map.GetTile(player.X, player.Y);
                     if (tile == 'O')
                     {
@@ -543,22 +733,15 @@
                     }
                     else if (tile == 'N')
                     {
-                        Console.Clear();
-                        Console.WriteLine("NPC: 환영합니다, 용사님! 좋은 무기와 방어구가 준비되어 있어요.");
-                        Console.WriteLine("- 무기: 검, 활\n- 방어구: 갑옷, 방패");
-                        Console.ReadKey();
+                        HandleShopInteraction(weaponShopItems, "무기/방어구 상점");
                     }
                     else if (tile == 'S')
                     {
-                        Console.Clear();
-                        Console.WriteLine("상점: 필요한 물건이 있나요?");
-                        Console.ReadKey();
+                        HandleShopInteraction(potionShopItems, "포션 상점");
                     }
                     else if (tile == 'H')
                     {
-                        Console.Clear();
-                        Console.WriteLine("NPC: 당신, 부상을 입었군요. 치료해드릴까요?");
-                        Console.ReadKey();
+                        HandleHospital();
                     }
                 }
                 else
